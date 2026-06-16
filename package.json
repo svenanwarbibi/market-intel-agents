@@ -8,7 +8,8 @@
   },
   "scripts": {
     "job": "tsx src/worker/run-job.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "poll": "tsx src/worker/poll.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",

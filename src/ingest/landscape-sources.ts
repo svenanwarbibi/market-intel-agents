@@ -14,25 +14,44 @@ const UA = "market-intel-agents/0.1 (desk research)";
 const parser = new Parser({ headers: { "User-Agent": UA }, timeout: 15000 });
 
 // --- Competitor seed list — EDIT THIS ------------------------------------
-// Add the firms you want to track. `feed` (RSS) gives the richest text;
-// `site` falls back to scraping the landing page for positioning copy.
-// (Clutch.co / G2 block scraping and forbid it — track competitors via their
-//  own sites/blogs + news instead.)
 type Competitor = { name: string; site?: string; feed?: string };
 const COMPETITORS: Competitor[] = [
   // { name: "Acme Innovation", site: "https://www.example.com", feed: "https://www.example.com/blog/rss" },
-  // { name: "Beta Consulting", site: "https://www.beta-consulting.com" },
 ];
+// -------------------------------------------------------------------------
+
+// --- Geographic focus: European editions + region-qualified queries ------
+// `region` is AND-ed into every news query to bias the TOPIC toward Europe;
+// hl/gl/ceid select a European Google News edition (US is omitted on purpose).
+type Edition = { label: string; hl: string; gl: string; ceid: string; region: string };
+const EUROPEAN_EDITIONS: Record<string, Edition> = {
+  UK:      { label: "UK",      hl: "en-GB", gl: "GB", ceid: "GB:en", region: "(UK OR Europe)" },
+  DACH:    { label: "DACH",    hl: "de",    gl: "DE", ceid: "DE:de", region: "(Germany OR Europe)" },
+  Nordics: { label: "Nordics", hl: "sv",    gl: "SE", ceid: "SE:sv", region: "(Nordics OR Europe)" },
+  Benelux: { label: "Benelux", hl: "nl",    gl: "NL", ceid: "NL:nl", region: "(Benelux OR Europe)" },
+  EMEA:    { label: "EMEA",    hl: "en-GB", gl: "GB", ceid: "GB:en", region: "(Europe)" },
+  Global:  { label: "Europe",  hl: "en-GB", gl: "GB", ceid: "GB:en", region: "(Europe)" },
+};
+const DEFAULT_EDITION: Edition = EUROPEAN_EDITIONS.UK;
+
+function editionsFor(scope: Scope): Edition[] {
+  const picks = (scope.geographies ?? [])
+    .map((g) => EUROPEAN_EDITIONS[g])
+    .filter((e): e is Edition => Boolean(e));
+  const byCeid = new Map(picks.map((e) => [e.ceid, e]));
+  return byCeid.size ? [...byCeid.values()] : [DEFAULT_EDITION];
+}
 // -------------------------------------------------------------------------
 
 const PER_FEED = 6;
 const MAX_DOCS = 50;
 
-function googleNews(term: string): string {
+function googleNews(term: string, ed: Edition): string {
+  const q = `${term} ${ed.region}`.trim();
   return (
     "https://news.google.com/rss/search?q=" +
-    encodeURIComponent(`${term} when:30d`) +
-    "&hl=en-US&gl=US&ceid=US:en"
+    encodeURIComponent(`${q} when:30d`) +
+    `&hl=${ed.hl}&gl=${ed.gl}&ceid=${ed.ceid}`
   );
 }
 
@@ -79,8 +98,9 @@ async function scrapeSite(name: string, url: string, ms = 15000): Promise<Doc[]>
 
 export async function gatherLandscapeCorpus(scope: Scope): Promise<Doc[]> {
   const tasks: Promise<Doc[]>[] = [];
+  const editions = editionsFor(scope);
 
-  // 1. Scope-driven news
+  // 1. Scope-driven news — fanned out across European editions, region-qualified.
   const terms = [...new Set(
     [
       ...scope.verticals.map((v) => `${v} innovation`),
@@ -91,13 +111,15 @@ export async function gatherLandscapeCorpus(scope: Scope): Promise<Doc[]> {
       .filter((t): t is string => Boolean(t))
       .map((t) => t.trim()),
   )];
-  for (const term of terms) tasks.push(parseFeed(googleNews(term), `news:${term}`, PER_FEED));
+  for (const term of terms)
+    for (const ed of editions)
+      tasks.push(parseFeed(googleNews(term, ed), `news:${term} (${ed.label})`, PER_FEED));
 
   // 2. Competitor sources
   for (const c of COMPETITORS) {
     if (c.feed) tasks.push(parseFeed(c.feed, `competitor:${c.name}`, PER_FEED));
     if (c.site) tasks.push(scrapeSite(c.name, c.site));
-    tasks.push(parseFeed(googleNews(`"${c.name}"`), `competitor-news:${c.name}`, 4));
+    tasks.push(parseFeed(googleNews(`"${c.name}"`, editions[0]), `competitor-news:${c.name}`, 4));
   }
 
   // Fetch everything in parallel; merge, dedup, cap.

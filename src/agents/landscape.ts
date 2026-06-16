@@ -43,6 +43,14 @@ From the supplied corpus, map the competitive and adjacent playing field for the
 - Identify white space the buyer's offering could occupy.
 - Size the addressable market with an explicit confidence band and the basis for the estimate.
 
+Regional focus (European): prioritise European companies, markets, and data points
+(EU, UK, EFTA, DACH, Nordics, Benelux). When the corpus offers a European figure or
+competitor, prefer it over a US/Asia one. Treat US/Asia data points as secondary context:
+include one only when no European equivalent exists in the corpus, and when you do, flag it
+explicitly in the statement (e.g. "(US figure — no European equivalent in corpus)"). Do not
+size the European market by extrapolating from US/Asia numbers without stating that assumption.
+Omit competitors whose relevance is purely US/Asia unless they materially compete in Europe.
+
 Grounding rule (non-negotiable): every entry in "claims" MUST cite a real document via its
 "documentId", taken verbatim from a [id] in the corpus. Never invent a documentId or a source.
 If the corpus does not support a claim, do not make it.`;
