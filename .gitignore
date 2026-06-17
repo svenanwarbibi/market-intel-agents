@@ -4,3 +4,6 @@ dist/
 .env.local
 .DS_Store
 *.log
+
+# IC-3 internal offering reference (keep local, do not publish)
+src/agents/ic3_offering_reference.md
