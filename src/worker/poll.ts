@@ -60,6 +60,8 @@ async function process(job: { id: string; scope: any }) {
   try {
     const xlsx = await buildReportXlsx({ scope, corpus, landscape, marketfit });
     const title = (scope as any).verticals?.join(", ") || message || "Research run";
+    const slug = (title.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "report").slice(0, 40);
+    const day = new Date().toISOString().slice(0, 10);
     const sent = await sendReportEmail({
       to: globalThis.process.env.REPORT_EMAIL ?? "svenabibi@gmail.com",
       subject: `Market-Intel report: ${title}`,
@@ -68,7 +70,7 @@ async function process(job: { id: string; scope: any }) {
         `Geographies: ${((scope as any).geographies ?? []).join(", ")}\n` +
         `Opportunities: ${marketfit?.opportunities?.length ?? 0}\n` +
         `Job id: ${job.id}`,
-      filename: `market-intel-${job.id.slice(0, 8)}.xlsx`,
+      filename: `market-intel_${slug}_${day}.xlsx`,
       xlsx,
     });
     if (sent) console.log("  Report emailed.");
