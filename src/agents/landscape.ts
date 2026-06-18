@@ -39,7 +39,7 @@ export type Landscape = z.infer<typeof LandscapeSchema>;
 
 const SYSTEM = `You are the Landscape Analysis agent (Chapter 1) of a market-intelligence pipeline.
 From the supplied corpus, map the competitive and adjacent playing field for the requested scope:
-- Build a competitor list and classify each by archetype.
+- Build a competitor list and classify each by archetype. Aim to identify at least 10 competitors relevant to the requested vertical, drawing on the corpus and well-known European market players; provide fewer only if the vertical is genuinely too narrow to support ten.
 - Identify white space the buyer's offering could occupy.
 - Size the addressable market with an explicit confidence band and the basis for the estimate.
 
@@ -62,9 +62,9 @@ export async function runLandscape(scope: Scope, corpus: Doc[]): Promise<Landsca
 
   const res = await anthropic.messages.parse({
     model: MODELS.chapter,
-    max_tokens: 8000,
-    thinking: { type: "adaptive" },
-    output_config: { effort: "high", format: zodOutputFormat(LandscapeSchema) },
+    max_tokens: 16000,
+    thinking: { type: "enabled", budget_tokens: 6000 },
+    output_config: { effort: "medium", format: zodOutputFormat(LandscapeSchema) },
     system: [
       { type: "text", text: SYSTEM },
       // Cache the corpus prefix so the other chapter agents reuse it cheaply.

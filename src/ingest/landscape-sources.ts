@@ -13,16 +13,9 @@ export type Doc = {
 const UA = "market-intel-agents/0.1 (desk research)";
 const parser = new Parser({ headers: { "User-Agent": UA }, timeout: 15000 });
 
-// --- Competitor seed list — EDIT THIS ------------------------------------
 type Competitor = { name: string; site?: string; feed?: string };
-const COMPETITORS: Competitor[] = [
-  // { name: "Acme Innovation", site: "https://www.example.com", feed: "https://www.example.com/blog/rss" },
-];
-// -------------------------------------------------------------------------
+const COMPETITORS: Competitor[] = [];
 
-// --- Geographic focus: European editions + region-qualified queries ------
-// `region` is AND-ed into every news query to bias the TOPIC toward Europe;
-// hl/gl/ceid select a European Google News edition (US is omitted on purpose).
 type Edition = { label: string; hl: string; gl: string; ceid: string; region: string };
 const EUROPEAN_EDITIONS: Record<string, Edition> = {
   UK:      { label: "UK",      hl: "en-GB", gl: "GB", ceid: "GB:en", region: "(UK OR Europe)" },
@@ -41,18 +34,29 @@ function editionsFor(scope: Scope): Edition[] {
   const byCeid = new Map(picks.map((e) => [e.ceid, e]));
   return byCeid.size ? [...byCeid.values()] : [DEFAULT_EDITION];
 }
-// -------------------------------------------------------------------------
 
-const PER_FEED = 6;
-const MAX_DOCS = 50;
+const PER_FEED = 8;
+const MAX_DOCS = 60;
+const RECENCY = "when:1y"; // 30d was far too narrow and starved the corpus.
 
 function googleNews(term: string, ed: Edition): string {
   const q = `${term} ${ed.region}`.trim();
   return (
     "https://news.google.com/rss/search?q=" +
-    encodeURIComponent(`${q} when:30d`) +
+    encodeURIComponent(`${q} ${RECENCY}`) +
     `&hl=${ed.hl}&gl=${ed.gl}&ceid=${ed.ceid}`
   );
+}
+
+// Build on-topic queries DERIVED FROM THE SCOPE. No hardcoded industry terms.
+function queryTermsFor(scope: Scope): string[] {
+  const out: string[] = [];
+  for (const v of scope.verticals) {
+    out.push(v, `${v} companies`, `${v} market`, `${v} leading providers`, `${v} competitors`);
+    if (scope.segment) out.push(`${v} ${scope.segment}`);
+  }
+  if (scope.segment) out.push(scope.segment);
+  return [...new Set(out.map((t) => t.trim()).filter(Boolean))];
 }
 
 async function parseFeed(url: string, source: string, limit: number): Promise<Doc[]> {
@@ -71,7 +75,7 @@ async function parseFeed(url: string, source: string, limit: number): Promise<Do
       };
     });
   } catch {
-    return []; // a dead feed must not sink the run
+    return [];
   }
 }
 
@@ -99,30 +103,18 @@ async function scrapeSite(name: string, url: string, ms = 15000): Promise<Doc[]>
 export async function gatherLandscapeCorpus(scope: Scope): Promise<Doc[]> {
   const tasks: Promise<Doc[]>[] = [];
   const editions = editionsFor(scope);
+  const terms = queryTermsFor(scope);
 
-  // 1. Scope-driven news — fanned out across European editions, region-qualified.
-  const terms = [...new Set(
-    [
-      ...scope.verticals.map((v) => `${v} innovation`),
-      scope.segment,
-      "packaging innovation",
-      "systematic innovation methodology",
-    ]
-      .filter((t): t is string => Boolean(t))
-      .map((t) => t.trim()),
-  )];
   for (const term of terms)
     for (const ed of editions)
       tasks.push(parseFeed(googleNews(term, ed), `news:${term} (${ed.label})`, PER_FEED));
 
-  // 2. Competitor sources
   for (const c of COMPETITORS) {
     if (c.feed) tasks.push(parseFeed(c.feed, `competitor:${c.name}`, PER_FEED));
     if (c.site) tasks.push(scrapeSite(c.name, c.site));
     tasks.push(parseFeed(googleNews(`"${c.name}"`, editions[0]), `competitor-news:${c.name}`, 4));
   }
 
-  // Fetch everything in parallel; merge, dedup, cap.
   const settled = await Promise.allSettled(tasks);
   const docs: Doc[] = [];
   const seen = new Set<string>();
